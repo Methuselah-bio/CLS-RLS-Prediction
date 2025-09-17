@@ -1,0 +1,168 @@
+seed: 42
+paths:
+  raw_dir: data/raw
+  # Optional: specify the raw file name; leave unset to auto‑detect
+  raw_file: null
+  # Additional raw files for multi‑omics experiments.  When ``task.data_type`` is
+  # set to ``multiomics``, the files listed here will be merged with
+  # ``raw_file`` on the column specified by ``task.multiomics_join_on``.
+  additional_raw_files: []
+  processed: data/processed/processed.csv
+  results: results/
+task:
+  # Name of the target column in the processed dataset.  For CLS experiments this might be
+  # a binary or multi‑class label indicating survival outcome.
+  target: survival_label
+  # Optional columns specifying the duration and event indicator for survival
+  # analysis.  When ``problem_type`` is set to ``survival`` these fields must
+  # be provided and correspond to the columns produced by ``prepare_data``.
+  target_time: null
+  target_event: null
+  # Specify the problem type.  Supported values are ``classification`` for
+  # categorical outcomes and ``survival`` for time‑to‑event data.  Survival
+  # analysis is appropriate for chronological lifespan assays where the
+  # outcome is a duration until death and some observations are censored【974672309982697†L144-L157】.
+  problem_type: classification
+  # Data type determines how the raw data is interpreted.  Supported values:
+  #   - uci: legacy UCI yeast.data format
+  #   - csv: generic tabular gene‑expression matrix
+  #   - fasta: sequence files (FASTA)
+  #   - geo: download a GEO series (requires GEOparse)
+  #   - rls: Replicative Lifespan tables (supplementary tables S1/S2 from the RLS screen)
+  #   - cls: Chronological Lifespan tables from the genome‑wide CLS screen
+  #   - multiomics: merge multiple gene/protein/metabolite matrices on a
+  #     shared identifier to form a combined feature set
+  #   - scrna: single‑cell RNA‑seq matrices (cells × genes)
+  #   - spatial: spatial transcriptomics matrices
+  data_type: uci
+  # GEO accession to download when data_type=geo (e.g., GSE41619)
+  geo_accession: null
+  # Include pathway enrichment scores using g:Profiler.  Requires gprofiler‑official.
+  include_pathway_enrichment: false
+  # Include network features from PPI networks via STRING.  Requires networkx.
+  include_network_features: false
+  # Include cross‑species ortholog mapping for the gene list.  When enabled,
+  # genes are mapped to the organism specified by ``ortholog_target_species``
+  # using g:Profiler’s g:Orth/g:Convert services【151163149604280†L400-L415】.  This
+  # allows enrichment analysis to be performed in the context of another
+  # species (e.g., human).  Requires gprofiler‑official and internet access.
+  include_ortholog_mapping: false
+  # Target species for ortholog mapping (e.g., hsapiens, mmusculus).
+  ortholog_target_species: hsapiens
+  # Preprocessing options for omics data.  When set to true the corresponding
+  # procedure will be applied in ``prepare_data.py``.  ``batch_correction``
+  # attempts to remove batch effects using the ComBat algorithm (via
+  # ``combat‑py``); ``variance_stabilization`` applies a power transform to
+  # stabilise the variance across genes; ``imputation`` fills in missing
+  # values with an iterative model (sklearn's IterativeImputer); ``dimensionality_reduction``
+  # specifies a list of techniques (e.g., ["pca", "vae"]) to reduce the
+  # feature dimensionality.
+  preprocessing:
+    batch_correction: false
+    variance_stabilization: false
+    imputation: false
+    dimensionality_reduction: []
+    # Optional data augmentation settings for classification tasks.  When
+    # ``method`` is set to 'smote' the prepare_data script applies SMOTE
+    # oversampling to balance class distributions after basic processing.  This
+    # helps mitigate class imbalance common in deletion screens.  Other
+    # methods (e.g., 'gan') can be added in the future.
+    augmentation:
+      method: none
+  # When data_type=multiomics, join tables on this column (e.g., 'gene' or 'sample')
+  multiomics_join_on: gene
+  # Species identifier for g:Profiler (scerevisiae for yeast)
+  pathway_species: scerevisiae
+split:
+  test_size: 0.2
+  val_size: 0.2
+features:
+  # Placeholder for future feature selection strategies (e.g., 'pathways', 'top_k')
+  mode: pathways
+  # Optional: path to a YAML file mapping group names to feature lists for grouped SHAP
+  group_config: null
+model:
+  # Choose between built‑in classifiers: logreg, rf, xgboost, balanced_rf, cost_sensitive_logreg
+  name: xgboost
+  params:
+    n_estimators: 300
+    max_depth: 4
+  # Flag indicating whether to apply class weights inversely proportional to class frequency.
+  use_class_weights: false
+eval:
+  bootstrap: 500
+  metrics: [auroc, auprc, accuracy, brier]
+experiment:
+  cv_folds: 5
+  algorithms:
+    - elastic_net_logreg
+    - svm
+    - xgboost
+    - random_forest
+    - mlp
+    - balanced_rf
+    - random_survival_forest
+    - cox
+  # Apply a RandomOverSampler when training each fold; requires imbalanced‑learn.
+  use_oversampling: false
+  param_grids:
+    random_forest:
+      clf__n_estimators: [100, 200]
+      clf__max_depth: [null, 10, 20]
+      clf__max_features: ["sqrt", "log2"]
+    mlp:
+      clf__hidden_layer_sizes:
+        - [50]
+        - [50, 50]
+        - [100]
+        - [100, 50]
+      clf__activation: ["relu", "tanh"]
+      clf__alpha: [0.0001, 0.001]
+      clf__learning_rate_init: [0.001, 0.01]
+    balanced_rf:
+      clf__n_estimators: [100, 200]
+      clf__max_depth: [null, 10]
+      clf__sampling_strategy: ["auto", "majority"]
+advanced_models:
+  # Hyperparameter grids for advanced models defined in advanced_models.py.  Each key can
+  # override the default values provided by that model.
+  param_grids:
+    transformer:
+      model_name: ["distilbert-base-uncased"]
+      num_labels: [2]
+    cox:
+      # No default parameters; lifelines CoxPHFitter accepts penaliser, strata, etc.
+      penalizer: [0.0, 0.01]
+    graphnn:
+      # Placeholder hyperparameters for GraphNN
+      hidden_channels: [32, 64]
+      num_layers: [2, 3]
+    temporal_rnn:
+      # Hidden layer sizes for temporal RNN; adjust based on sequence length and feature dimensions
+      hidden_size: [32, 64]
+      num_layers: [1, 2]
+    vae:
+      # Latent and hidden dimensions for the variational autoencoder
+      latent_dim: [2, 4]
+      hidden_dim: [16, 32]
+    cgan:
+      # Dimensions for generator/discriminator networks in the conditional GAN
+      noise_dim: [10]
+      hidden_dim: [32, 64]
+    meta_learner:
+      # No specific hyperparameters; meta‑learning requires custom loops
+      {}
+
+# Additional sections for causal analysis and fairness auditing.  These are
+# currently stubbed out in the code base and can be enabled by adding
+# appropriate parameters here.  For example, specify the treatment and
+# outcome columns for DoWhy causal inference or the sensitive attribute for
+# fairness audits.  See ``causal_analysis.py`` and ``fairness_audit.py`` for
+# details.
+causal:
+  treatment_col: null
+  outcome_col: null
+  confounders: []
+
+fairness:
+  sensitive_attribute: null
